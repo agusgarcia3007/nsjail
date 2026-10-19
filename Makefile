@@ -47,6 +47,16 @@ BIN = nsjail
 LIBS = kafel/libkafel.a
 TEST_BINS = tests/nstun_buffer_budget_test tests/nstun_policy_test tests/nstun_ip_test tests/nstun_ipparse_test tests/nstun_udp_peer_test
 
+# libFuzzer targets for the dependency-free nstun parsers. They only need
+# clang; the normal build dependencies (protobuf, libnl, kafel) are not used.
+FUZZ_CXX ?= clang++
+FUZZ_CXXFLAGS = -std=c++20 -g -O1 -fno-omit-frame-pointer -I. -fsanitize=fuzzer,address
+FUZZ_BINS = fuzz/nstun_ipparse_fuzzer \
+	fuzz/nstun_socks5_auth_reply_fuzzer \
+	fuzz/nstun_socks5_connect_reply_fuzzer \
+	fuzz/nstun_http_connect_reply_fuzzer \
+	fuzz/nstun_find_end_of_headers_fuzzer
+
 # If PASTA_BIN_PATH is not provided in env, dynamically search for it if EMBED_PASTA is requested
 # or fallback to it naturally.
 ifdef EMBED_PASTA
@@ -73,7 +83,7 @@ OBJS = $(SRCS_CXX:.cc=.o) $(SRCS_PB_CXX:.cc=.o)
 
 # 4. TARGETS
 
-.PHONY: all clean depend indent kafel_init
+.PHONY: all clean depend indent kafel_init fuzz
 
 all: $(BIN)
 
@@ -110,7 +120,7 @@ kafel/libkafel.a: kafel_init
 
 # Utilities
 clean:
-	$(RM) core Makefile.bak $(OBJS) $(SRCS_PB_CXX) $(SRCS_PB_H) $(SRCS_PB_O) $(BIN) $(TEST_BINS)
+	$(RM) core Makefile.bak $(OBJS) $(SRCS_PB_CXX) $(SRCS_PB_H) $(SRCS_PB_O) $(BIN) $(TEST_BINS) $(FUZZ_BINS)
 ifneq ("$(wildcard kafel/Makefile)","")
 	+$(MAKE) -C kafel clean
 endif
@@ -275,6 +285,25 @@ tests/nstun_ip_test: tests/nstun_ip_test.cc nstun/net_defs.h
 
 tests/nstun_ipparse_test: tests/nstun_ipparse_test.cc nstun/ipparse.cc nstun/ipparse.h
 	$(CXX) $(filter-out -c,$(CXXFLAGS)) tests/nstun_ipparse_test.cc nstun/ipparse.cc -o $@
+
+# Fuzz targets. The proxy reply parsers live in encap.cc and do not need
+# protobuf, so these link without the main build dependencies.
+fuzz: $(FUZZ_BINS)
+
+fuzz/nstun_ipparse_fuzzer: fuzz/nstun_ipparse_fuzzer.cc nstun/ipparse.cc nstun/ipparse.h
+	$(FUZZ_CXX) $(FUZZ_CXXFLAGS) $< nstun/ipparse.cc -o $@
+
+fuzz/nstun_socks5_auth_reply_fuzzer: fuzz/nstun_socks5_auth_reply_fuzzer.cc nstun/encap.cc nstun/encap.h
+	$(FUZZ_CXX) $(FUZZ_CXXFLAGS) $< nstun/encap.cc -o $@
+
+fuzz/nstun_socks5_connect_reply_fuzzer: fuzz/nstun_socks5_connect_reply_fuzzer.cc nstun/encap.cc nstun/encap.h
+	$(FUZZ_CXX) $(FUZZ_CXXFLAGS) $< nstun/encap.cc -o $@
+
+fuzz/nstun_http_connect_reply_fuzzer: fuzz/nstun_http_connect_reply_fuzzer.cc nstun/encap.cc nstun/encap.h
+	$(FUZZ_CXX) $(FUZZ_CXXFLAGS) $< nstun/encap.cc -o $@
+
+fuzz/nstun_find_end_of_headers_fuzzer: fuzz/nstun_find_end_of_headers_fuzzer.cc nstun/encap.cc nstun/encap.h
+	$(FUZZ_CXX) $(FUZZ_CXXFLAGS) $< nstun/encap.cc -o $@
 
 tests/nstun_udp_peer_test: tests/nstun_udp_peer_test.cc nstun/udp_peer.h nstun/core.h
 	$(CXX) $(filter-out -c,$(CXXFLAGS)) tests/nstun_udp_peer_test.cc -o $@

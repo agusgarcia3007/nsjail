@@ -1,10 +1,11 @@
 #include "encap.h"
 
 #include <arpa/inet.h>
+#include <stdio.h>
 #include <string.h>
+#include <string_view>
 #include <sys/socket.h>
 
-#include "logs.h"
 #include "net_defs.h"
 
 namespace nstun {
